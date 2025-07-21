@@ -21,7 +21,7 @@ for _, path in CONF.PATH.items():
     sys.path.append(path)
 
 # Original Datasets
-CONF.PATH.R3SCAN_RAW = os.path.join(CONF.PATH.DATA, "3RScan")  # 3RScan original dataset directory
+CONF.PATH.R3SCAN_RAW = None  # Disable 3DSSG dataset loading
 CONF.PATH.SCANNET_RAW = os.path.join(CONF.PATH.DATA, "SCANNET")  # ScanNet original dataset directory
 CONF.PATH.SCANNET_RAW3D = os.path.join(CONF.PATH.SCANNET_RAW, "scannet_3d", "data")  # ScanNet original dataset directory
 CONF.PATH.SCANNET_RAW2D = os.path.join(CONF.PATH.SCANNET_RAW, "scannet_2d")  # ScanNet original dataset directory
@@ -29,9 +29,9 @@ CONF.PATH.SCANNET_RAW2D = os.path.join(CONF.PATH.SCANNET_RAW, "scannet_2d")  # S
 # Processed Dataset
 # CONF.PATH.R3SCAN = os.path.join(CONF.PATH.DATA, "OpenSG_3RScan")
 # CONF.PATH.SCANNET = os.path.join(CONF.PATH.DATA, "OpenSG_ScanNet")
-CONF.PATH.DATA_OUT = ""  # Output directory for processed datasets
-CONF.PATH.R3SCAN = os.path.join(CONF.PATH.DATA_OUT, "datasets", "OpenSG_3RScan")  # Output directory for processed 3RScan dataset
-CONF.PATH.SCANNET = os.path.join(CONF.PATH.DATA_OUT, "datasets", "OpenSG_ScanNet")  # Output directory for processed ScanNet dataset
+CONF.PATH.DATA_OUT = os.path.join(CONF.PATH.BASE, "Open3DSG_trainset")
+CONF.PATH.R3SCAN = os.path.join(CONF.PATH.DATA_OUT, "datasets", "OpenSG_3RScan")
+CONF.PATH.SCANNET = os.path.join(CONF.PATH.DATA_OUT, "datasets", "OpenSG_ScanNet")
 CONF.PATH.CHECKPOINTS = os.path.join(CONF.PATH.DATA_OUT, "checkpoints")
 CONF.PATH.FEATURES = os.path.join(CONF.PATH.DATA_OUT, "features")
 
@@ -41,4 +41,6 @@ CONF.PATH.MLFLOW = os.path.join(CONF.PATH.MLOPS, "opensg", "mlflow")  # Output d
 CONF.PATH.TENSORBOARD = os.path.join(CONF.PATH.MLOPS, "opensg", "tensorboards")  # Output directory for Tensorboard data
 
 for _, path in CONF.PATH.items():
+    if not path:
+        continue
     assert os.path.exists(path), f"{path} does not exist"

@@ -26,7 +26,14 @@ from open3dsg.data.open_dataset import Open2D3DSGDataset
 from open3dsg.data.pcl_augmentations import PclAugmenter
 from open3dsg.models.pointnet import feature_transform_reguliarzer
 from open3dsg.models.sgpn import SGPN
-from open3dsg.scripts.eval import get_eval, eval_attribute
+try:
+    from open3dsg.scripts.eval import get_eval, eval_attribute
+except Exception:  # eval utilities removed in label-free setup
+    def get_eval(*_args, **_kwargs):
+        return {}
+
+    def eval_attribute(*_args, **_kwargs):
+        return {}
 from open3dsg.util.plotting_utils import *
 
 REPORT_TEMPLATE_MAIN_EVAL = """
@@ -90,25 +97,11 @@ class D3SSGModule(lightning.LightningModule):
 
         self.model.apply(inplace_relu)
 
-        self.obj_class_dict = [line.rstrip() for line in open(os.path.join(CONF.PATH.R3SCAN_RAW, "classes.txt"), "r").readlines()]
-        self.pred_class_dict = [line.rstrip() for line in open(os.path.join(
-            CONF.PATH.R3SCAN_RAW, "relationships_custom.txt"), "r").readlines()]
-        self.pred_class_dict_orig = [line.rstrip() for line in open(
-            os.path.join(CONF.PATH.R3SCAN_RAW, "relationships.txt"), "r").readlines()]
-        self.rel2idx = dict(zip(self.pred_class_dict_orig, range(len(self.pred_class_dict_orig))))
-        self.known_mapping = dict(zip(self.pred_class_dict, self.pred_class_dict))
-        self.known_mapping['to the left of'] = 'left of'
-        self.known_mapping['to the right of'] = 'right of'
-        self.known_mapping['next to'] = 'close by'  # 'none'
-        self.known_mapping['above'] = 'higher than'  # 'none'
-        self.known_mapping['under'] = 'lower than'
-        self.known_mapping['placed on top'] = 'standing on'  # 'supported by'
-
-        def map_rel2idx(class_name):
-            return self.rel2idx.get(class_name, 0)
-        self.rel2idx_mapping = np.vectorize(map_rel2idx)
-        self.rel2rel_mapping = np.vectorize(self.known_mapping.get)
-        self.cust_pred2pred = self.rel2idx_mapping(self.rel2rel_mapping(np.array(self.pred_class_dict)))
+        # Closed-set label dictionaries are not required for label-free training
+        self.obj_class_dict = []
+        self.pred_class_dict = []
+        self.pred_class_dict_orig = []
+        self.cust_pred2pred = None
         self.cosSim1 = torch.nn.CosineSimilarity(dim=1)
         self.cosSim2 = torch.nn.CosineSimilarity(dim=2)
 
@@ -126,10 +119,6 @@ class D3SSGModule(lightning.LightningModule):
     def setup(self, stage: str):
         def load_scan(base_path, file_path):
             return json.load(open(os.path.join(base_path, file_path)))["scans"]
-        D3SSG_TRAIN = load_scan(CONF.PATH.R3SCAN_RAW, "3DSSG_subset/relationships_train.json")
-        D3SSG_VAL = load_scan(CONF.PATH.R3SCAN_RAW, "3DSSG_subset/relationships_validation.json")
-        D3SSG_TEST = load_scan(CONF.PATH.R3SCAN_RAW, "3DSSG_subset/relationships_test.json")
-
         SCANNET_TRAIN = load_scan(CONF.PATH.SCANNET, "subgraphs/relationships_train.json")
         SCANNET_VAL = load_scan(CONF.PATH.SCANNET, "subgraphs/relationships_validation.json")
 
@@ -139,29 +128,10 @@ class D3SSGModule(lightning.LightningModule):
             rel_img_dim = 336 if self.hparams['edge_model'] == 'ViT-L/14@336px' else 224
         if self.hparams.get('dataset') == '3rscan':
             SCANNET_VAL, SCANNET_TRAIN = None, None
-        else:
-            D3SSG_VAL, D3SSG_TRAIN = None, None
         if stage == 'fit':
-            if self.hparams.get('test_scans_3rscan'):
-                print('Evaluating on 3RScan test set')
-            self.val_dataset = Open2D3DSGDataset(
-                relationships_R3SCAN=D3SSG_VAL if not self.hparams.get('test_scans_3rscan') else D3SSG_TEST,
-                relationships_scannet=SCANNET_VAL,
-                openseg=self.hparams['clip_model'] == 'OpenSeg',
-                img_dim=img_dim,
-                rel_img_dim=rel_img_dim,
-                top_k_frames=self.hparams['top_k_frames'],
-                scales=self.hparams['scales'],
-                mini=self.hparams['mini_dataset'],
-                load_features=self.hparams.get('load_features', None),
-                blip=self.hparams.get('blip', False),
-                llava=self.hparams.get('llava', False),
-                half=self.hparams.get('quick_eval', False),
-                max_objects=self.hparams.get('max_nodes', None),
-                max_rels=self.hparams.get('max_edges', None)
-            )
+            self.val_dataset = None
             self.train_dataset = Open2D3DSGDataset(
-                relationships_R3SCAN=D3SSG_TRAIN,
+                relationships_R3SCAN=None,
                 relationships_scannet=SCANNET_TRAIN,
                 openseg=self.hparams['clip_model'] == 'OpenSeg',
                 img_dim=img_dim,
@@ -183,22 +153,7 @@ class D3SSGModule(lightning.LightningModule):
 
         elif stage == 'test':
             self.rel_mapper = AutoModel.from_pretrained('jinaai/jina-embeddings-v2-base-en', trust_remote_code=True).cuda()
-            if self.hparams.get('test_scans_3rscan'):
-                print('Evaluating on 3RScan test set')
-            self.val_dataset = Open2D3DSGDataset(
-                relationships_R3SCAN=D3SSG_VAL if not self.hparams.get('test_scans_3rscan') else D3SSG_TEST,
-                relationships_scannet=SCANNET_VAL,
-                openseg=self.hparams['clip_model'] == 'OpenSeg',
-                img_dim=img_dim,
-                rel_img_dim=rel_img_dim,
-                top_k_frames=self.hparams['top_k_frames'],
-                scales=self.hparams['scales'],
-                mini=self.hparams['mini_dataset'],
-                load_features=self.hparams.get('load_features', None),
-                blip=self.hparams.get('blip', False),
-                llava=self.hparams.get('llava', False),
-                half=self.hparams.get('quick_eval', False)
-            )
+            self.val_dataset = None
 
         if not self.hparams.get('dataset') == '3rscan':
             self.scannet_test_inst2label = {}
@@ -262,15 +217,11 @@ class D3SSGModule(lightning.LightningModule):
 
         return train_dataloader
 
-    def val_dataloader(self) -> DataLoader:
-        val_dataloader = DataLoader(self.val_dataset, batch_size=self.hparams['batch_size'], shuffle=False,
-                                    collate_fn=self.val_dataset.collate_fn, num_workers=self.hparams['workers'], pin_memory=True)
-        return val_dataloader
+    def val_dataloader(self):
+        return []
 
-    def test_dataloader(self) -> DataLoader:
-        test_dataloader = DataLoader(self.val_dataset, 1, shuffle=False,
-                                     collate_fn=self.val_dataset.collate_fn, num_workers=self.hparams['workers'], pin_memory=True)
-        return test_dataloader
+    def test_dataloader(self):
+        return []
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.model.parameters(), self.hparams['lr'], weight_decay=1e-5)

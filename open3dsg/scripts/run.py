@@ -92,15 +92,7 @@ def get_args():
     parser.add_argument("--checkpoint", type=str, help="Specify the checkpoint root", default=None)
     parser.add_argument('--weight_2d', type=float, default=0.5, help="2d-3d feature fusion weight")
     parser.add_argument('--n_beams', type=int, default=5, help="number of beams for beam search in LLM output")
-    parser.add_argument('--gt_objects', action="store_true", help="Use GT objects for predicate prediction")
-    parser.add_argument('--vis_graphs', action="store_true", help="save graph predictions to disk")
-    parser.add_argument('--predict_materials', action="store_true",
-                        help="predict materials from 3rscan seperate testset")
-    parser.add_argument('--test_scans_3rscan', action="store_true",
-                        help="test on 3rscan test set scans which are not labeled in 3dssg, it is needed for the material prediction")
     parser.add_argument('--predict_from_2d', action="store_true", help="predict only using 2d models")
-    parser.add_argument('--quick_eval', action='store_true', help="only eval on a few samples")
-    parser.add_argument('--object_context', action="store_true", help="prompt clip with: A [object] in a scene")
     parser.add_argument('--update_hparams', action="store_true", help="update hparams from checkpoint")
     parser.add_argument('--manual_mapping', action="store_true", help="Manually map some known predicates to GT")
 
@@ -123,6 +115,7 @@ if __name__ == "__main__":
 
     hparams = vars(args)
     hparams['gpus'] = num_gpus
+    assert hparams['w_obj'] == 0 and hparams['w_rel'] == 0, "Closed-set losses disabled"
     if args.run_name is not None:
         hparams['run_name'] = args.run_name
     else:
